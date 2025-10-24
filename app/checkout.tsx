@@ -6,20 +6,22 @@ import {
   ScrollView,
   Platform,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useState } from 'react';
 import { router } from 'expo-router';
 import { usePOS } from '@/contexts/POSContext';
-import { CreditCard, Banknote, Smartphone } from 'lucide-react-native';
+import { CreditCard, Banknote, Smartphone, Trash } from 'lucide-react-native';
 import { PaymentMethod } from '@/types/pos';
 import * as Haptics from 'expo-haptics';
 
-const paymentMethods: Array<{
+const paymentMethods: {
   id: PaymentMethod;
   name: string;
   description: string;
   icon: typeof CreditCard;
-}> = [
+}[] = [
+
   {
     id: 'card',
     name: 'Card Payment',
@@ -41,7 +43,7 @@ const paymentMethods: Array<{
 ];
 
 export default function CheckoutScreen() {
-  const { cart, cartSummary, completeSale, isProcessingSale } = usePOS();
+  const { cart, cartSummary, completeSale, isProcessingSale, removeFromCart, updateQuantity } = usePOS();
   const [selectedPayment, setSelectedPayment] = useState<PaymentMethod | null>(null);
 
   const handlePayment = async () => {
@@ -67,15 +69,85 @@ export default function CheckoutScreen() {
     <View style={styles.container}>
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Order Summary</Text>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Order Summary</Text>
+            <TouchableOpacity
+              style={styles.clearAllButton}
+              onPress={() => {
+                Alert.alert(
+                  'Clear Cart',
+                  'Are you sure you want to clear all items?',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Clear',
+                      style: 'destructive',
+                      onPress: () => {
+                        if (Platform.OS !== 'web') {
+                          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                        }
+                        router.back();
+                      },
+                    },
+                  ]
+                );
+              }}
+              disabled={isProcessingSale}
+            >
+              <Trash size={18} color="#ef4444" />
+              <Text style={styles.clearAllText}>Clear All</Text>
+            </TouchableOpacity>
+          </View>
           <View style={styles.orderSummary}>
             {cart.map((item) => (
               <View key={item.product.id} style={styles.orderItem}>
-                <Text style={styles.itemName}>{item.product.name}</Text>
-                <Text style={styles.itemQuantity}>x{item.quantity}</Text>
-                <Text style={styles.itemTotal}>
-                  ${(item.product.price * item.quantity).toFixed(2)}
-                </Text>
+                <View style={styles.itemContent}>
+                  <Text style={styles.itemName}>{item.product.name}</Text>
+                  <View style={styles.itemFooter}>
+                    <View style={styles.quantityControls}>
+                      <TouchableOpacity
+                        style={styles.quantityButton}
+                        onPress={() => {
+                          if (Platform.OS !== 'web') {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          }
+                          updateQuantity(item.product.id, item.quantity - 1);
+                        }}
+                        disabled={isProcessingSale}
+                      >
+                        <Text style={styles.quantityButtonText}>-</Text>
+                      </TouchableOpacity>
+                      <Text style={styles.itemQuantity}>{item.quantity}</Text>
+                      <TouchableOpacity
+                        style={styles.quantityButton}
+                        onPress={() => {
+                          if (Platform.OS !== 'web') {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          }
+                          updateQuantity(item.product.id, item.quantity + 1);
+                        }}
+                        disabled={isProcessingSale}
+                      >
+                        <Text style={styles.quantityButtonText}>+</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={styles.itemTotal}>
+                      ${(item.product.price * item.quantity).toFixed(2)}
+                    </Text>
+                  </View>
+                </View>
+                <TouchableOpacity
+                  style={styles.removeItemButton}
+                  onPress={() => {
+                    if (Platform.OS !== 'web') {
+                      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                    }
+                    removeFromCart(item.product.id);
+                  }}
+                  disabled={isProcessingSale}
+                >
+                  <Trash size={18} color="#ef4444" />
+                </TouchableOpacity>
               </View>
             ))}
           </View>
@@ -197,36 +269,95 @@ const styles = StyleSheet.create({
     marginTop: 16,
     padding: 20,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700' as const,
     color: '#1f2937',
-    marginBottom: 16,
+  },
+  clearAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#fee2e2',
+  },
+  clearAllText: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    color: '#ef4444',
   },
   orderSummary: {
     gap: 12,
   },
   orderItem: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 12,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  itemContent: {
+    flex: 1,
   },
   itemName: {
-    flex: 1,
     fontSize: 15,
+    fontWeight: '600' as const,
+    color: '#1f2937',
+    marginBottom: 8,
+  },
+  itemFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  quantityControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f3f4f6',
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  quantityButton: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#e5e7eb',
+  },
+  quantityButtonText: {
+    fontSize: 18,
+    fontWeight: '600' as const,
     color: '#1f2937',
   },
   itemQuantity: {
-    fontSize: 15,
-    color: '#6b7280',
+    fontSize: 14,
+    color: '#1f2937',
     fontWeight: '600' as const,
+    paddingHorizontal: 16,
+    minWidth: 40,
+    textAlign: 'center' as const,
   },
   itemTotal: {
-    fontSize: 15,
-    fontWeight: '600' as const,
-    color: '#1f2937',
-    minWidth: 70,
-    textAlign: 'right' as const,
+    fontSize: 16,
+    fontWeight: '700' as const,
+    color: '#2563eb',
+  },
+  removeItemButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: '#fee2e2',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   paymentMethods: {
     gap: 12,
