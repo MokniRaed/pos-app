@@ -14,7 +14,7 @@ import {
 import { Stack } from 'expo-router';
 import { useState, useRef } from 'react';
 import { usePOS } from '@/contexts/POSContext';
-import { categories } from '@/mocks/products';
+import { Category } from '@/types/pos';
 import { 
   ShoppingCart, 
   Plus, 
@@ -22,7 +22,9 @@ import {
   Trash2,
   Search,
   Camera,
-  X
+  X,
+  RotateCw,
+  Trash
 } from 'lucide-react-native';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -34,9 +36,11 @@ export default function POSScreen() {
     cart,
     cartSummary,
     selectedCategory,
+    categories,
     addToCart,
     updateQuantity,
     removeFromCart,
+    clearCart,
     setSelectedCategory,
   } = usePOS();
 
@@ -47,6 +51,7 @@ export default function POSScreen() {
   const [showScanner, setShowScanner] = useState<boolean>(false);
   const [permission, requestPermission] = useCameraPermissions();
   const [isScanning, setIsScanning] = useState<boolean>(true);
+  const [cameraFacing, setCameraFacing] = useState<'back' | 'front'>('back');
   const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const displayProducts = searchQuery
@@ -109,7 +114,15 @@ export default function POSScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
     setIsScanning(true);
+    setCameraFacing('back');
     setShowScanner(true);
+  };
+
+  const toggleCameraFacing = () => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    setCameraFacing((prev) => (prev === 'back' ? 'front' : 'back'));
   };
 
   const handleBarcodeScanned = (data: string) => {
@@ -149,7 +162,7 @@ export default function POSScreen() {
     <>
       <Stack.Screen options={{ headerShown: false }} />
       <View style={styles.container}>
-      <View style={[styles.leftPanel, !isLargeScreen && styles.leftPanelMobile]}>
+        <View style={[styles.leftPanel, !isLargeScreen && styles.leftPanelMobile]}>
         <View style={styles.searchBar}>
           <Search size={20} color="#666" style={styles.searchIcon} />
           <TextInput
@@ -173,7 +186,7 @@ export default function POSScreen() {
           style={styles.categoryBar}
           contentContainerStyle={styles.categoryBarContent}
         >
-          {categories.map((cat) => {
+          {categories.map((cat: Category) => {
             const iconModule = require('lucide-react-native') as Record<string, any>;
             const Icon = iconModule[cat.icon];
             return (
@@ -191,7 +204,7 @@ export default function POSScreen() {
                 }}
               >
                 <Icon 
-                  size={20} 
+                  size={16} 
                   color={selectedCategory === cat.id ? '#fff' : '#333'} 
                 />
                 <Text
@@ -239,16 +252,42 @@ export default function POSScreen() {
             ))}
           </View>
         </ScrollView>
-      </View>
+        </View>
 
       {isLargeScreen && <View style={styles.rightPanel}>
         <View style={styles.cartHeader}>
           <ShoppingCart size={24} color="#333" />
           <Text style={styles.cartTitle}>Current Order</Text>
           {cart.length > 0 && (
-            <View style={styles.cartBadge}>
-              <Text style={styles.cartBadgeText}>{cartSummary.itemCount}</Text>
-            </View>
+            <>
+              <View style={styles.cartBadge}>
+                <Text style={styles.cartBadgeText}>{cartSummary.itemCount}</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.clearCartButton}
+                onPress={() => {
+                  Alert.alert(
+                    'Clear Cart',
+                    'Are you sure you want to clear all items?',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: 'Clear',
+                        style: 'destructive',
+                        onPress: () => {
+                          if (Platform.OS !== 'web') {
+                            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                          }
+                          clearCart();
+                        },
+                      },
+                    ]
+                  );
+                }}
+              >
+                <Trash size={20} color="#ef4444" />
+              </TouchableOpacity>
+            </>
           )}
         </View>
 
@@ -374,20 +413,28 @@ export default function POSScreen() {
       <View style={styles.scannerContainer}>
         <View style={styles.scannerHeader}>
           <Text style={styles.scannerTitle}>Scan Barcode</Text>
-          <TouchableOpacity
-            style={styles.closeButton}
-            onPress={() => {
-              setShowScanner(false);
-              setIsScanning(true);
-            }}
-          >
-            <X size={28} color="#fff" />
-          </TouchableOpacity>
+          <View style={styles.scannerHeaderButtons}>
+            <TouchableOpacity
+              style={styles.flipButton}
+              onPress={toggleCameraFacing}
+            >
+              <RotateCw size={24} color="#fff" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => {
+                setShowScanner(false);
+                setIsScanning(true);
+              }}
+            >
+              <X size={28} color="#fff" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <CameraView
           style={styles.camera}
-          facing="back"
+          facing={cameraFacing}
           onBarcodeScanned={({ data }: { data: string }) => {
             if (isScanning) {
               handleBarcodeScanned(data);
@@ -472,24 +519,24 @@ const styles = StyleSheet.create({
   },
   categoryBarContent: {
     paddingHorizontal: 12,
-    paddingVertical: 12,
-    gap: 8,
+    paddingVertical: 8,
+    gap: 6,
   },
   categoryButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
     backgroundColor: '#f5f5f5',
-    gap: 6,
-    marginRight: 8,
+    gap: 4,
+    marginRight: 6,
   },
   categoryButtonActive: {
     backgroundColor: '#2563eb',
   },
   categoryText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600' as const,
     color: '#333',
   },
@@ -709,11 +756,31 @@ const styles = StyleSheet.create({
     fontWeight: '700' as const,
     color: '#fff',
   },
+  scannerHeaderButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  flipButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   closeButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
     backgroundColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clearCartButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: '#fee2e2',
     alignItems: 'center',
     justifyContent: 'center',
   },
