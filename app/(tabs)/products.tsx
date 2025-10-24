@@ -13,7 +13,6 @@ import {
 import { Stack } from 'expo-router';
 import { useState } from 'react';
 import { usePOS } from '@/contexts/POSContext';
-import { categories } from '@/mocks/products';
 import {
   Plus,
   Edit2,
@@ -22,11 +21,11 @@ import {
   X,
   Package,
 } from 'lucide-react-native';
-import { Product } from '@/types/pos';
+import { Product, Category } from '@/types/pos';
 import * as Haptics from 'expo-haptics';
 
 export default function ProductsScreen() {
-  const { products, deleteProduct, addProduct, updateProduct } = usePOS();
+  const { products, categories, deleteProduct, addProduct, updateProduct } = usePOS();
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [modalVisible, setModalVisible] = useState<boolean>(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -113,7 +112,7 @@ export default function ProductsScreen() {
   };
 
   const getCategoryName = (id: string) => {
-    return categories.find((c) => c.id === id)?.name || id;
+    return categories.find((c: Category) => c.id === id)?.name || id;
   };
 
   return (
@@ -264,8 +263,8 @@ export default function ProductsScreen() {
                   style={styles.categoryScroll}
                 >
                   {categories
-                    .filter((c) => c.id !== 'all')
-                    .map((cat) => (
+                    .filter((c: Category) => c.id !== 'all')
+                    .map((cat: Category) => (
                       <TouchableOpacity
                         key={cat.id}
                         style={[
