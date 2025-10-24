@@ -6,9 +6,13 @@ import {
   TouchableOpacity,
   Platform,
   Share,
+  Modal,
+  TextInput,
+  Alert,
 } from 'react-native';
-import { Stack } from 'expo-router';
+import { Stack, router } from 'expo-router';
 import { usePOS } from '@/contexts/POSContext';
+import { Category } from '@/types/pos';
 import {
   DollarSign,
   Package,
@@ -19,13 +23,21 @@ import {
   Download,
   Settings as SettingsIcon,
   ChevronRight,
+  Plus,
+  Edit2,
+  Trash2,
+  X,
+  Layers,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useState, useMemo } from 'react';
 
 export default function BusinessScreen() {
-  const { sales, products } = usePOS();
+  const { sales, products, categories, addCategory, updateCategory, deleteCategory } = usePOS();
   const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'week' | 'month' | 'all'>('today');
+  const [categoryModalVisible, setCategoryModalVisible] = useState<boolean>(false);
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [categoryFormData, setCategoryFormData] = useState<Omit<Category, 'id'>>({ name: '', icon: 'Package' });
 
   const stats = useMemo(() => {
     const now = new Date();
@@ -281,24 +293,203 @@ ${stats.topProducts.map((p, i) => `${i + 1}. ${p.name} - $${p.revenue.toFixed(2)
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Settings</Text>
           <View style={styles.settingsCards}>
-            <TouchableOpacity style={styles.settingCard}>
+            <TouchableOpacity
+              style={styles.settingCard}
+              onPress={() => {
+                if (Platform.OS !== 'web') {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                }
+                router.push('/business-info');
+              }}
+            >
               <SettingsIcon size={20} color="#6b7280" />
               <Text style={styles.settingCardText}>Business Information</Text>
               <ChevronRight size={20} color="#9ca3af" />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.settingCard}>
+            <TouchableOpacity
+              style={styles.settingCard}
+              onPress={() => {
+                if (Platform.OS !== 'web') {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                }
+                router.push('/tax-settings');
+              }}
+            >
               <Calendar size={20} color="#6b7280" />
               <Text style={styles.settingCardText}>Tax Settings</Text>
               <ChevronRight size={20} color="#9ca3af" />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.settingCard}>
+            <TouchableOpacity
+              style={styles.settingCard}
+              onPress={() => {
+                if (Platform.OS !== 'web') {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                }
+                router.push('/receipt-settings');
+              }}
+            >
               <FileText size={20} color="#6b7280" />
               <Text style={styles.settingCardText}>Receipt Customization</Text>
               <ChevronRight size={20} color="#9ca3af" />
             </TouchableOpacity>
           </View>
         </View>
+
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Categories Management</Text>
+            <TouchableOpacity
+              style={styles.addCategoryButton}
+              onPress={() => {
+                if (Platform.OS !== 'web') {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                }
+                setEditingCategory(null);
+                setCategoryFormData({ name: '', icon: 'Package' });
+                setCategoryModalVisible(true);
+              }}
+            >
+              <Plus size={20} color="#2563eb" />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.categoriesList}>
+            {categories
+              .filter((c: Category) => c.id !== 'all')
+              .map((category: Category) => (
+                <View key={category.id} style={styles.categoryItem}>
+                  <View style={styles.categoryIconContainer}>
+                    <Layers size={20} color="#2563eb" />
+                  </View>
+                  <View style={styles.categoryItemInfo}>
+                    <Text style={styles.categoryItemName}>{category.name}</Text>
+                    <Text style={styles.categoryItemIcon}>Icon: {category.icon}</Text>
+                  </View>
+                  <View style={styles.categoryActions}>
+                    <TouchableOpacity
+                      style={styles.categoryActionButton}
+                      onPress={() => {
+                        if (Platform.OS !== 'web') {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        }
+                        setEditingCategory(category);
+                        setCategoryFormData({ name: category.name, icon: category.icon });
+                        setCategoryModalVisible(true);
+                      }}
+                    >
+                      <Edit2 size={16} color="#2563eb" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.categoryActionButton}
+                      onPress={() => {
+                        Alert.alert(
+                          'Delete Category',
+                          `Are you sure you want to delete ${category.name}?`,
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            {
+                              text: 'Delete',
+                              style: 'destructive',
+                              onPress: async () => {
+                                if (Platform.OS !== 'web') {
+                                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                                }
+                                await deleteCategory(category.id);
+                              },
+                            },
+                          ]
+                        );
+                      }}
+                    >
+                      <Trash2 size={16} color="#ef4444" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+          </View>
+        </View>
       </ScrollView>
+
+      <Modal
+        visible={categoryModalVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setCategoryModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>
+              {editingCategory ? 'Edit Category' : 'Add Category'}
+            </Text>
+            <TouchableOpacity onPress={() => setCategoryModalVisible(false)}>
+              <X size={24} color="#666" />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.modalContent}>
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>Category Name *</Text>
+              <TextInput
+                style={styles.input}
+                value={categoryFormData.name}
+                onChangeText={(text) =>
+                  setCategoryFormData({ ...categoryFormData, name: text })
+                }
+                placeholder="Enter category name"
+                placeholderTextColor="#999"
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>Icon Name *</Text>
+              <TextInput
+                style={styles.input}
+                value={categoryFormData.icon}
+                onChangeText={(text) =>
+                  setCategoryFormData({ ...categoryFormData, icon: text })
+                }
+                placeholder="Enter Lucide icon name (e.g., Package, Coffee)"
+                placeholderTextColor="#999"
+              />
+              <Text style={styles.helperText}>
+                Use any icon name from lucide-react-native
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.modalFooter}>
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={() => setCategoryModalVisible(false)}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.saveButton}
+              onPress={async () => {
+                if (!categoryFormData.name || !categoryFormData.icon) {
+                  Alert.alert('Error', 'Please fill in all fields');
+                  return;
+                }
+
+                if (Platform.OS !== 'web') {
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                }
+
+                if (editingCategory) {
+                  await updateCategory(editingCategory.id, categoryFormData);
+                } else {
+                  await addCategory(categoryFormData);
+                }
+                setCategoryModalVisible(false);
+              }}
+            >
+              <Text style={styles.saveButtonText}>
+                {editingCategory ? 'Update' : 'Add'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 }
@@ -505,5 +696,143 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '500' as const,
     color: '#1f2937',
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  addCategoryButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: '#eff6ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  categoriesList: {
+    gap: 12,
+  },
+  categoryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    backgroundColor: '#f9fafb',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e5e5',
+    gap: 12,
+  },
+  categoryIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: '#eff6ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  categoryItemInfo: {
+    flex: 1,
+  },
+  categoryItemName: {
+    fontSize: 15,
+    fontWeight: '600' as const,
+    color: '#1f2937',
+    marginBottom: 2,
+  },
+  categoryItemIcon: {
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  categoryActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  categoryActionButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#e5e5e5',
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e5e5',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700' as const,
+    color: '#1f2937',
+  },
+  modalContent: {
+    flex: 1,
+    padding: 20,
+  },
+  formGroup: {
+    marginBottom: 20,
+  },
+  label: {
+    fontSize: 15,
+    fontWeight: '600' as const,
+    color: '#1f2937',
+    marginBottom: 8,
+  },
+  input: {
+    height: 48,
+    borderWidth: 1,
+    borderColor: '#e5e5e5',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    fontSize: 16,
+    color: '#1f2937',
+    backgroundColor: '#f9fafb',
+  },
+  helperText: {
+    fontSize: 13,
+    color: '#6b7280',
+    marginTop: 6,
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    padding: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e5e5',
+    gap: 12,
+  },
+  cancelButton: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 12,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+    color: '#1f2937',
+  },
+  saveButton: {
+    flex: 2,
+    padding: 16,
+    borderRadius: 12,
+    backgroundColor: '#2563eb',
+    alignItems: 'center',
+  },
+  saveButtonText: {
+    fontSize: 16,
+    fontWeight: '700' as const,
+    color: '#fff',
   },
 });
