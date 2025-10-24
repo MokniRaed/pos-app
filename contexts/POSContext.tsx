@@ -2,13 +2,42 @@ import createContextHook from '@nkzw/create-context-hook';
 import { useState, useCallback, useMemo } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { products as initialProducts } from '@/mocks/products';
-import { Product, CartItem, Sale, PaymentMethod } from '@/types/pos';
+import { products as initialProducts, categories as initialCategories } from '@/mocks/products';
+import { Product, CartItem, Sale, PaymentMethod, Category, TaxSettings, BusinessInfo, ReceiptSettings } from '@/types/pos';
 
-const TAX_RATE = 0.20;
+const DEFAULT_TAX_SETTINGS: TaxSettings = {
+  enabled: true,
+  rate: 20,
+  name: 'VAT',
+  taxNumber: '',
+};
+
+const DEFAULT_BUSINESS_INFO: BusinessInfo = {
+  name: 'My Business',
+  address: '',
+  phone: '',
+  email: '',
+  website: '',
+  taxNumber: '',
+  logo: '',
+};
+
+const DEFAULT_RECEIPT_SETTINGS: ReceiptSettings = {
+  showLogo: true,
+  header: 'Thank you for your purchase!',
+  footer: 'Please visit us again',
+  showTaxNumber: true,
+  showWebsite: true,
+  showBarcode: true,
+};
+
 const STORAGE_KEYS = {
   SALES: '@pos_sales',
   PRODUCTS: '@pos_products',
+  CATEGORIES: '@pos_categories',
+  TAX_SETTINGS: '@pos_tax_settings',
+  BUSINESS_INFO: '@pos_business_info',
+  RECEIPT_SETTINGS: '@pos_receipt_settings',
 };
 
 export const [POSProvider, usePOS] = createContextHook(() => {
@@ -23,11 +52,43 @@ export const [POSProvider, usePOS] = createContextHook(() => {
     },
   });
 
+  const categoriesQuery = useQuery({
+    queryKey: ['categories'],
+    queryFn: async () => {
+      const stored = await AsyncStorage.getItem(STORAGE_KEYS.CATEGORIES);
+      return stored ? JSON.parse(stored) : initialCategories;
+    },
+  });
+
   const salesQuery = useQuery({
     queryKey: ['sales'],
     queryFn: async () => {
       const stored = await AsyncStorage.getItem(STORAGE_KEYS.SALES);
       return stored ? JSON.parse(stored).map((s: Sale) => ({ ...s, timestamp: new Date(s.timestamp) })) : [];
+    },
+  });
+
+  const taxSettingsQuery = useQuery({
+    queryKey: ['taxSettings'],
+    queryFn: async () => {
+      const stored = await AsyncStorage.getItem(STORAGE_KEYS.TAX_SETTINGS);
+      return stored ? JSON.parse(stored) : DEFAULT_TAX_SETTINGS;
+    },
+  });
+
+  const businessInfoQuery = useQuery({
+    queryKey: ['businessInfo'],
+    queryFn: async () => {
+      const stored = await AsyncStorage.getItem(STORAGE_KEYS.BUSINESS_INFO);
+      return stored ? JSON.parse(stored) : DEFAULT_BUSINESS_INFO;
+    },
+  });
+
+  const receiptSettingsQuery = useQuery({
+    queryKey: ['receiptSettings'],
+    queryFn: async () => {
+      const stored = await AsyncStorage.getItem(STORAGE_KEYS.RECEIPT_SETTINGS);
+      return stored ? JSON.parse(stored) : DEFAULT_RECEIPT_SETTINGS;
     },
   });
 
@@ -50,6 +111,46 @@ export const [POSProvider, usePOS] = createContextHook(() => {
     },
     onSuccess: () => {
       productsQuery.refetch();
+    },
+  });
+
+  const updateCategoriesMutation = useMutation({
+    mutationFn: async (categories: Category[]) => {
+      await AsyncStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(categories));
+      return categories;
+    },
+    onSuccess: () => {
+      categoriesQuery.refetch();
+    },
+  });
+
+  const updateTaxSettingsMutation = useMutation({
+    mutationFn: async (settings: TaxSettings) => {
+      await AsyncStorage.setItem(STORAGE_KEYS.TAX_SETTINGS, JSON.stringify(settings));
+      return settings;
+    },
+    onSuccess: () => {
+      taxSettingsQuery.refetch();
+    },
+  });
+
+  const updateBusinessInfoMutation = useMutation({
+    mutationFn: async (info: BusinessInfo) => {
+      await AsyncStorage.setItem(STORAGE_KEYS.BUSINESS_INFO, JSON.stringify(info));
+      return info;
+    },
+    onSuccess: () => {
+      businessInfoQuery.refetch();
+    },
+  });
+
+  const updateReceiptSettingsMutation = useMutation({
+    mutationFn: async (settings: ReceiptSettings) => {
+      await AsyncStorage.setItem(STORAGE_KEYS.RECEIPT_SETTINGS, JSON.stringify(settings));
+      return settings;
+    },
+    onSuccess: () => {
+      receiptSettingsQuery.refetch();
     },
   });
 
@@ -84,6 +185,43 @@ export const [POSProvider, usePOS] = createContextHook(() => {
       await updateProductsMutation.mutateAsync(updatedProducts);
     },
     [productsQuery.data, updateProductsMutation.mutateAsync]
+  );
+
+  const addCategory = useCallback(
+    async (category: Omit<Category, 'id'>) => {
+      const newCategory: Category = {
+        ...category,
+        id: Date.now().toString(),
+      };
+      const updatedCategories = [...(categoriesQuery.data || []), newCategory];
+      await updateCategoriesMutation.mutateAsync(updatedCategories);
+      return newCategory;
+    },
+    [categoriesQuery.data, updateCategoriesMutation.mutateAsync]
+  );
+
+  const updateCategory = useCallback(
+    async (id: string, updates: Partial<Category>) => {
+      const updatedCategories = (categoriesQuery.data || []).map((c: Category) =>
+        c.id === id ? { ...c, ...updates } : c
+      );
+      await updateCategoriesMutation.mutateAsync(updatedCategories);
+    },
+    [categoriesQuery.data, updateCategoriesMutation.mutateAsync]
+  );
+
+  const deleteCategory = useCallback(
+    async (id: string) => {
+      if (id === 'all') return;
+      const updatedCategories = (categoriesQuery.data || []).filter(
+        (c: Category) => c.id !== id
+      );
+      await updateCategoriesMutation.mutateAsync(updatedCategories);
+      if (selectedCategory === id) {
+        setSelectedCategory('all');
+      }
+    },
+    [categoriesQuery.data, updateCategoriesMutation.mutateAsync, selectedCategory]
   );
 
   const addToCart = useCallback((product: Product) => {
@@ -125,12 +263,13 @@ export const [POSProvider, usePOS] = createContextHook(() => {
       (sum, item) => sum + item.product.price * item.quantity,
       0
     );
-    const tax = subtotal * TAX_RATE;
+    const taxSettings = taxSettingsQuery.data || DEFAULT_TAX_SETTINGS;
+    const tax = taxSettings.enabled ? subtotal * (taxSettings.rate / 100) : 0;
     const total = subtotal + tax;
     const itemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
     return { subtotal, tax, total, itemCount };
-  }, [cart]);
+  }, [cart, taxSettingsQuery.data]);
 
   const completeSale = useCallback(
     async (paymentMethod: PaymentMethod) => {
@@ -189,17 +328,42 @@ export const [POSProvider, usePOS] = createContextHook(() => {
     return todaySales.reduce((sum: number, sale: Sale) => sum + sale.total, 0);
   }, [todaySales]);
 
+  const updateTaxSettings = useCallback(
+    async (settings: TaxSettings) => {
+      await updateTaxSettingsMutation.mutateAsync(settings);
+    },
+    [updateTaxSettingsMutation.mutateAsync]
+  );
+
+  const updateBusinessInfo = useCallback(
+    async (info: BusinessInfo) => {
+      await updateBusinessInfoMutation.mutateAsync(info);
+    },
+    [updateBusinessInfoMutation.mutateAsync]
+  );
+
+  const updateReceiptSettings = useCallback(
+    async (settings: ReceiptSettings) => {
+      await updateReceiptSettingsMutation.mutateAsync(settings);
+    },
+    [updateReceiptSettingsMutation.mutateAsync]
+  );
+
   return useMemo(
     () => ({
       cart,
       cartSummary,
       products: productsQuery.data || [],
       filteredProducts,
+      categories: categoriesQuery.data || [],
       sales: salesQuery.data || [],
       todaySales,
       todayTotal,
       selectedCategory,
-      isLoading: productsQuery.isLoading || salesQuery.isLoading,
+      taxSettings: taxSettingsQuery.data || DEFAULT_TAX_SETTINGS,
+      businessInfo: businessInfoQuery.data || DEFAULT_BUSINESS_INFO,
+      receiptSettings: receiptSettingsQuery.data || DEFAULT_RECEIPT_SETTINGS,
+      isLoading: productsQuery.isLoading || salesQuery.isLoading || categoriesQuery.isLoading,
       isProcessingSale: saveSaleMutation.isPending,
       addToCart,
       removeFromCart,
@@ -210,6 +374,12 @@ export const [POSProvider, usePOS] = createContextHook(() => {
       addProduct,
       updateProduct,
       deleteProduct,
+      addCategory,
+      updateCategory,
+      deleteCategory,
+      updateTaxSettings,
+      updateBusinessInfo,
+      updateReceiptSettings,
     }),
     [
       cart,
@@ -217,11 +387,16 @@ export const [POSProvider, usePOS] = createContextHook(() => {
       productsQuery.data,
       productsQuery.isLoading,
       filteredProducts,
+      categoriesQuery.data,
+      categoriesQuery.isLoading,
       salesQuery.data,
       salesQuery.isLoading,
       todaySales,
       todayTotal,
       selectedCategory,
+      taxSettingsQuery.data,
+      businessInfoQuery.data,
+      receiptSettingsQuery.data,
       saveSaleMutation.isPending,
       addToCart,
       removeFromCart,
@@ -232,6 +407,12 @@ export const [POSProvider, usePOS] = createContextHook(() => {
       addProduct,
       updateProduct,
       deleteProduct,
+      addCategory,
+      updateCategory,
+      deleteCategory,
+      updateTaxSettings,
+      updateBusinessInfo,
+      updateReceiptSettings,
     ]
   );
 });
