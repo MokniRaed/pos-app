@@ -6,6 +6,7 @@ import {
   ScrollView,
   Platform,
   Share,
+  Alert,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { usePOS } from '@/contexts/POSContext';
@@ -81,12 +82,40 @@ export default function ReceiptScreen() {
     }
 
     try {
-      await Share.share({
-        message: generateReceiptText(),
-        title: `Receipt ${sale.receiptNumber}`,
-      });
-    } catch (error) {
-      console.error('Error sharing receipt:', error);
+      if (Platform.OS === 'web') {
+        if (navigator.share) {
+          await navigator.share({
+            text: generateReceiptText(),
+            title: `Receipt ${sale.receiptNumber}`,
+          });
+        } else {
+          const textArea = document.createElement('textarea');
+          textArea.value = generateReceiptText();
+          textArea.style.position = 'fixed';
+          textArea.style.left = '-999999px';
+          textArea.style.top = '-999999px';
+          document.body.appendChild(textArea);
+          textArea.focus();
+          textArea.select();
+          try {
+            document.execCommand('copy');
+            Alert.alert('Copied!', 'Receipt copied to clipboard');
+          } catch {
+            Alert.alert('Error', 'Failed to copy receipt');
+          }
+          textArea.remove();
+        }
+      } else {
+        await Share.share({
+          message: generateReceiptText(),
+          title: `Receipt ${sale.receiptNumber}`,
+        });
+      }
+    } catch (error: any) {
+      if (error?.name !== 'AbortError') {
+        console.error('Error sharing receipt:', error);
+        Alert.alert('Error', 'Failed to share receipt');
+      }
     }
   };
 
